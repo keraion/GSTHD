@@ -1,4 +1,4 @@
-﻿using GSTHD.Util;
+using GSTHD.Util;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
@@ -155,7 +155,8 @@ namespace GSTHD
             ListPlaces.Clear();
             ListPlaces.Add("");
             ListPlacesWithTag.Clear();
-            JObject json_places = JObject.Parse(File.ReadAllText(@"oot_places.json"));
+            var oot_places_path = Path.Combine(AppContext.BaseDirectory, "Resources", "oot_places.json");
+            JObject json_places = JObject.Parse(File.ReadAllText(oot_places_path));
             foreach (var property in json_places)
             {
                 ListPlaces.Add(property.Key.ToString());
@@ -163,7 +164,8 @@ namespace GSTHD
             }
 
             ListSometimesHintsSuggestions.Clear();
-            JObject json_hints = JObject.Parse(File.ReadAllText(@"sometimes_hints.json"));
+            var hints_path = Path.Combine(AppContext.BaseDirectory, "Resources", "sometimes_hints.json");
+            JObject json_hints = JObject.Parse(File.ReadAllText(hints_path));
             foreach (var categorie in json_hints)
             {
                 foreach (var hint in categorie.Value)
