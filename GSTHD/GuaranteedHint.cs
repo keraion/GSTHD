@@ -8,7 +8,6 @@ namespace GSTHD
     class GuaranteedHint : PictureBox
     {
         List<string> ListImageName = new List<string>();
-        bool isMouseDown = false;
 
         Size GuaranteddHintSize;
 
@@ -26,7 +25,7 @@ namespace GSTHD
                 this.Image = Image.FromFile(@"Resources/" + ListImageName[0]);
                 this.SizeMode = PictureBoxSizeMode.StretchImage;
                 this.Size = GuaranteddHintSize;
-            }            
+            }
             this.Location = new Point(data.X, data.Y);
             this.TabStop = false;
             this.AllowDrop = false;
