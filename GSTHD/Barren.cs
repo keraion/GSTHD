@@ -57,6 +57,21 @@ namespace GSTHD
             LabelPlace.ForeColor = Colors[Settings.EnableBarrenColors ? ColorIndex : 0];
         }
 
+        public int GetColorIndex()
+        {
+            return ColorIndex;
+        }
+
+        public void SetColorIndex(int colorIndex)
+        {
+            if (Colors.Length == 0)
+                return;
+
+            var max = Colors.Length - 1;
+            ColorIndex = System.Math.Max(0, System.Math.Min(max, colorIndex));
+            UpdateColor();
+        }
+
         private void Mouse_ClickDown(object sender, MouseEventArgs e)
         {
             if (!Settings.EnableBarrenColors)

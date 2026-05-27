@@ -163,6 +163,149 @@ namespace GSTHD
             textBoxCustom.SuggestionContainer.BringToFront();
         }
 
+        public PanelWothBarrenState GetTrackerState()
+        {
+            var state = new PanelWothBarrenState();
+
+            foreach (var woth in ListWotH)
+            {
+                var entry = new WothEntryState()
+                {
+                    Name = woth.Name,
+                    ColorIndex = woth.GetColorIndex(),
+                };
+
+                foreach (var gossipStone in woth.listGossipStone)
+                {
+                    entry.GossipStoneStates.Add(gossipStone.GetState());
+                }
+
+                state.WothEntries.Add(entry);
+            }
+
+            foreach (var barren in ListBarren)
+            {
+                state.BarrenEntries.Add(new BarrenEntryState()
+                {
+                    Name = barren.Name,
+                    ColorIndex = barren.GetColorIndex(),
+                });
+            }
+
+            return state;
+        }
+
+        public void ApplyTrackerState(PanelWothBarrenState state)
+        {
+            ResetTrackerState();
+
+            if (state == null)
+                return;
+
+            foreach (var entry in state.WothEntries)
+            {
+                var woth = AddWotHEntry(entry.Name, false);
+                if (woth == null)
+                    continue;
+
+                woth.SetColorIndex(entry.ColorIndex);
+
+                var count = System.Math.Min(woth.listGossipStone.Count, entry.GossipStoneStates.Count);
+                for (int i = 0; i < count; i++)
+                {
+                    woth.listGossipStone[i].SetState(entry.GossipStoneStates[i]);
+                }
+            }
+
+            foreach (var entry in state.BarrenEntries)
+            {
+                var barren = AddBarrenEntry(entry.Name);
+                if (barren == null)
+                    continue;
+
+                barren.SetColorIndex(entry.ColorIndex);
+            }
+        }
+
+        public void ResetTrackerState()
+        {
+            foreach (var woth in ListWotH.ToList())
+            {
+                RemoveWotH(woth);
+            }
+
+            foreach (var barren in ListBarren.ToList())
+            {
+                RemoveBarren(barren);
+            }
+        }
+
+        private Barren AddBarrenEntry(string selectedPlace)
+        {
+            var place = (selectedPlace ?? string.Empty).ToUpper().Trim();
+            if (string.IsNullOrEmpty(place))
+                return null;
+
+            if (ListBarren.Count >= NbMaxRows)
+                return null;
+
+            if (ListBarren.Any(x => x.Name == place))
+                return null;
+
+            Barren newBarren;
+            if (ListBarren.Count <= 0)
+                newBarren = new Barren(Settings, place, new Point(0, -LabelSettings.Height), LabelSettings);
+            else
+                newBarren = new Barren(Settings, place, ListBarren.Last().LabelPlace.Location, LabelSettings);
+
+            ListBarren.Add(newBarren);
+            Controls.Add(newBarren.LabelPlace);
+            newBarren.LabelPlace.MouseClick += LabelPlace_MouseClick_Barren;
+            textBoxCustom.newLocation(new Point(0, newBarren.LabelPlace.Location.Y + newBarren.LabelPlace.Height), Location);
+            return newBarren;
+        }
+
+        private WotH AddWotHEntry(string selectedPlace, bool enforceDuplicateRule)
+        {
+            var place = (selectedPlace ?? string.Empty).ToUpper().Trim();
+            if (string.IsNullOrEmpty(place))
+                return null;
+
+            if (ListWotH.Count >= NbMaxRows)
+                return null;
+
+            if (enforceDuplicateRule && !Settings.EnableDuplicateWoth && ListWotH.Any(x => x.Name == place))
+                return null;
+
+            WotH newWotH;
+            if (ListWotH.Count <= 0)
+            {
+                newWotH = new WotH(Settings, place,
+                    GossipStoneCount, ListImage_WothItemsOption, GossipStoneSpacing,
+                    PathGoalCount, ListImage_GoalsOption, PathGoalSpacing,
+                    new Point(2, -LabelSettings.Height), LabelSettings, GossipStoneSize);
+            }
+            else
+            {
+                newWotH = new WotH(Settings, place,
+                    GossipStoneCount, ListImage_WothItemsOption, GossipStoneSpacing,
+                    PathGoalCount, ListImage_GoalsOption, PathGoalSpacing,
+                    ListWotH.Last().LabelPlace.Location, LabelSettings, GossipStoneSize);
+            }
+
+            ListWotH.Add(newWotH);
+            Controls.Add(newWotH.LabelPlace);
+            newWotH.LabelPlace.MouseClick += LabelPlace_MouseClick_WotH;
+
+            foreach (var gossipStone in newWotH.listGossipStone)
+            {
+                Controls.Add(gossipStone);
+            }
+
+            textBoxCustom.newLocation(new Point(0, newWotH.LabelPlace.Location.Y + newWotH.LabelPlace.Height), Location);
+            return newWotH;
+        }
+
         private void textBoxCustom_MouseClick(object sender, MouseEventArgs e)
         {
             ((TextBox)sender).Text = string.Empty;
@@ -175,26 +318,7 @@ namespace GSTHD
                 e.Handled = true;
                 e.SuppressKeyPress = true;
                 var textbox = (TextBox)sender;
-                if (ListBarren.Count < NbMaxRows)
-                {
-                    var selectedPlace = textbox.Text.ToUpper().Trim();
-                    var find = ListBarren.Where(x => x.Name == selectedPlace);
-                    if (find.Count() <= 0)
-                    {
-                        Barren newBarren = null;
-                        if(ListBarren.Count <= 0)
-                            newBarren = new Barren(Settings, selectedPlace, new Point(0, -LabelSettings.Height), LabelSettings);
-                        else
-                        {
-                            var lastLocation = ListBarren.Last().LabelPlace.Location;
-                            newBarren = new Barren(Settings, selectedPlace, lastLocation, LabelSettings);
-                        }
-                        ListBarren.Add(newBarren);
-                        this.Controls.Add(newBarren.LabelPlace);
-                        newBarren.LabelPlace.MouseClick += LabelPlace_MouseClick_Barren;
-                        textBoxCustom.newLocation(new Point(0, newBarren.LabelPlace.Location.Y + newBarren.LabelPlace.Height), this.Location);
-                    }
-                }
+                AddBarrenEntry(textbox.Text);
                 textbox.Text = string.Empty;
             }
         }
@@ -209,39 +333,7 @@ namespace GSTHD
                 var textbox = (TextBox)sender;
                 if (ListWotH.Count < NbMaxRows)
                 {
-                    if (textbox.Text != string.Empty)
-                    {
-                        var selectedPlace = textbox.Text.ToUpper().Trim();
-
-                        // add woth if duplicates are allowed or if there aren't any duplicates
-                        if(Settings.EnableDuplicateWoth || !ListWotH.Any(x => x.Name == selectedPlace))
-                        {
-                            WotH newWotH = null;
-                            if (ListWotH.Count <= 0)
-                                newWotH = new WotH(Settings, selectedPlace,
-                                    GossipStoneCount, ListImage_WothItemsOption, GossipStoneSpacing, 
-                                    PathGoalCount, ListImage_GoalsOption, PathGoalSpacing,
-                                    new Point(2, -LabelSettings.Height), LabelSettings, GossipStoneSize);
-                            else
-                            {
-                                var lastLocation = ListWotH.Last().LabelPlace.Location;
-                                newWotH = new WotH(Settings, selectedPlace,
-                                    GossipStoneCount, ListImage_WothItemsOption, GossipStoneSpacing,
-                                    PathGoalCount, ListImage_GoalsOption, PathGoalSpacing,
-                                    lastLocation, LabelSettings, GossipStoneSize);
-                            }
-                            ListWotH.Add(newWotH);
-                            this.Controls.Add(newWotH.LabelPlace);
-                            newWotH.LabelPlace.MouseClick += LabelPlace_MouseClick_WotH;
-
-                            foreach (var gossipStone in newWotH.listGossipStone)
-                            {
-                                this.Controls.Add(gossipStone);
-                            }
-                            //Move TextBoxCustom
-                            textBoxCustom.newLocation(new Point(0, newWotH.LabelPlace.Location.Y + newWotH.LabelPlace.Height), this.Location);
-                        }
-                    }
+                    AddWotHEntry(textbox.Text, true);
                 }
                 textbox.Text = string.Empty;
             }

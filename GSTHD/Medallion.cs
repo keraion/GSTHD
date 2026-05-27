@@ -152,10 +152,25 @@ namespace GSTHD
             return ImageIndex;
         }
 
+        public int GetDungeonState()
+        {
+            return DungeonIndex;
+        }
+
         public void SetState(int state)
         {
             ImageIndex = state;
             UpdateImage();
+        }
+
+        public void SetDungeonState(int state)
+        {
+            if (DungeonNames.Length == 0)
+                return;
+
+            DungeonIndex = System.Math.Max(0, System.Math.Min(DungeonNames.Length - 1, state));
+            SelectedDungeon.Text = DungeonNames[DungeonIndex];
+            SetSelectedDungeonLocation();
         }
 
         public void IncrementState()

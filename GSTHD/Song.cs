@@ -175,6 +175,7 @@ namespace GSTHD
             HoldsImage = state.HoldsImage;
             HeldImageName = state.HeldImageName;
             ImageIndex = state.ImageIndex;
+            UpdateImage();
         }
 
         public void IncrementState()

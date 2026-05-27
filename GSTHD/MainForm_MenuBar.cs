@@ -17,6 +17,7 @@ namespace GSTHD
             // File
             public ToolStripMenuItem Reset;
             public ToolStripMenuItem LoadLayout;
+            public ToolStripMenuItem LoadTrackerState;
             public ToolStripMenuItem ShowMenuBar;
 
             // Settings
@@ -131,6 +132,13 @@ namespace GSTHD
                     ShowShortcutKeys = true,
                 };
                 layoutMenu.DropDownItems.Add(Items.LoadLayout);
+
+                Items.LoadTrackerState = new ToolStripMenuItem("Load Tracker State", null, new EventHandler(menuBar_LoadTrackerState))
+                {
+                    ShortcutKeys = Keys.Control | Keys.Shift | Keys.L,
+                    ShowShortcutKeys = true,
+                };
+                layoutMenu.DropDownItems.Add(Items.LoadTrackerState);
 
                 Items.ShowMenuBar = new ToolStripMenuItem("Show Menu Bar", null, new EventHandler(menuBar_Enable))
                 {
@@ -420,6 +428,11 @@ namespace GSTHD
                 var filePath = OpenLayoutDialog.FileName;
                 Form.LoadLayout(filePath);
             }
+        }
+
+        private void menuBar_LoadTrackerState(object sender, EventArgs e)
+        {
+            Form.LoadTrackerStateFromDialog();
         }
 
         private void menuBar_ToggleEnableDuplicateWotH(object sender, EventArgs e)

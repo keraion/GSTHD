@@ -43,7 +43,35 @@ namespace GSTHD.Util
         public static void Write<T>(T obj, string filePath)
         {
             var str = JsonConvert.SerializeObject(obj, Formatting.Indented);
-            File.WriteAllText(filePath, str);
+            var fullPath = Path.GetFullPath(filePath);
+            var directory = Path.GetDirectoryName(fullPath);
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var tempFilePath = Path.Combine(directory ?? AppContext.BaseDirectory, Path.GetRandomFileName());
+
+            try
+            {
+                File.WriteAllText(tempFilePath, str);
+
+                if (File.Exists(fullPath))
+                {
+                    File.Replace(tempFilePath, fullPath, null);
+                }
+                else
+                {
+                    File.Move(tempFilePath, fullPath);
+                }
+            }
+            finally
+            {
+                if (File.Exists(tempFilePath))
+                {
+                    File.Delete(tempFilePath);
+                }
+            }
         }
     }
 }

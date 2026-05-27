@@ -41,59 +41,55 @@ namespace GSTHD
         {
             if (e.Button == MouseButtons.Left)
             {
-                if (!isColoredLeft && !isColoredRight)
-                {
-                    this.Image = Image.FromFile(@"Resources/" + ListImageName[1]);
-                    this.Name = ListImageName[1];
-                    isColoredLeft = true;
-                }
-                else if (isColoredLeft && !isColoredRight)
-                {
-                    this.Image = Image.FromFile(@"Resources/" + ListImageName[0]);
-                    this.Name = ListImageName[0];
-                    isColoredLeft = false;
-                }
-                else if (!isColoredLeft && isColoredRight)
-                {
-                    this.Image = Image.FromFile(@"Resources/" + ListImageName[3]);
-                    this.Name = ListImageName[3];
-                    isColoredLeft = true;
-                }
-                else if (isColoredLeft && isColoredRight)
-                {
-                    this.Image = Image.FromFile(@"Resources/" + ListImageName[2]);
-                    this.Name = ListImageName[2];
-                    isColoredLeft = false;
-                }
+                if (!isColoredLeft && !isColoredRight) isColoredLeft = true;
+                else if (isColoredLeft && !isColoredRight) isColoredLeft = false;
+                else if (!isColoredLeft && isColoredRight) isColoredLeft = true;
+                else if (isColoredLeft && isColoredRight) isColoredLeft = false;
+
+                UpdateImageFromState();
 
             }
             if (e.Button == MouseButtons.Right)
             {
-                if (!isColoredLeft && !isColoredRight)
-                {
-                    this.Image = Image.FromFile(@"Resources/" + ListImageName[2]);
-                    this.Name = ListImageName[2];
-                    isColoredRight = true;
-                }
-                else if (isColoredLeft && !isColoredRight)
-                {
-                    this.Image = Image.FromFile(@"Resources/" + ListImageName[3]);
-                    this.Name = ListImageName[3];
-                    isColoredRight = true;
-                }
-                else if (!isColoredLeft && isColoredRight)
-                {
-                    this.Image = Image.FromFile(@"Resources/" + ListImageName[0]);
-                    this.Name = ListImageName[0];
-                    isColoredRight = false;
-                }
-                else if (isColoredLeft && isColoredRight)
-                {
-                    this.Image = Image.FromFile(@"Resources/" + ListImageName[1]);
-                    this.Name = ListImageName[1];
-                    isColoredRight = false;
-                }
+                if (!isColoredLeft && !isColoredRight) isColoredRight = true;
+                else if (isColoredLeft && !isColoredRight) isColoredRight = true;
+                else if (!isColoredLeft && isColoredRight) isColoredRight = false;
+                else if (isColoredLeft && isColoredRight) isColoredRight = false;
+
+                UpdateImageFromState();
             }
+        }
+
+        private void UpdateImageFromState()
+        {
+            if (ListImageName == null || ListImageName.Count < 4)
+                return;
+
+            var index = GetState();
+            this.Image = Image.FromFile(@"Resources/" + ListImageName[index]);
+        }
+
+        public int GetState()
+        {
+            if (!isColoredLeft && !isColoredRight) return 0;
+            if (isColoredLeft && !isColoredRight) return 1;
+            if (!isColoredLeft && isColoredRight) return 2;
+            return 3;
+        }
+
+        public void SetState(int state)
+        {
+            var normalized = System.Math.Max(0, System.Math.Min(3, state));
+            isColoredLeft = normalized == 1 || normalized == 3;
+            isColoredRight = normalized == 2 || normalized == 3;
+            UpdateImageFromState();
+        }
+
+        public void ResetState()
+        {
+            isColoredLeft = false;
+            isColoredRight = false;
+            UpdateImageFromState();
         }
 
         private void Click_MouseDown(object sender, MouseEventArgs e)

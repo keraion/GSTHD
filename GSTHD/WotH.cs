@@ -98,6 +98,22 @@ namespace GSTHD
             LabelPlace.ForeColor = Colors[ColorIndex];
         }
 
+        public int GetColorIndex()
+        {
+            return ColorIndex;
+        }
+
+        public void SetColorIndex(int colorIndex)
+        {
+            if (Colors.Length == 0)
+                return;
+
+            var min = MinIndex;
+            var max = Colors.Length - 1;
+            ColorIndex = System.Math.Max(min, System.Math.Min(max, colorIndex));
+            UpdateColor();
+        }
+
         private void Mouse_ClickDown(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left && ColorIndex < Colors.Length - 1)

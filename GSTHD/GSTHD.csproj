@@ -31,6 +31,9 @@
     <Product>Gossip Stones Tracker HD</Product>
     <HotReloadEnabled>false</HotReloadEnabled>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
   </ItemGroup>

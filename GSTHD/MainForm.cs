@@ -24,11 +24,33 @@ namespace GSTHD
         Layout ActiveLayout;
         Settings ActiveSettings;
 
+        private const int TrackerAutosaveDebounceMs = 1000;
+        private readonly Timer TrackerAutosaveTimer;
+        private readonly OpenFileDialog OpenTrackerStateDialog;
+        private bool TrackerStateDirty;
+        private bool IsApplyingTrackerState;
+
+        private string TrackerStateFilePath => Path.Combine(AppContext.BaseDirectory, TrackerState.DefaultFileName);
+
         //PictureBox pbox_collectedSkulls;
 
         public MainForm()
         {
             InitializeComponent();
+
+            TrackerAutosaveTimer = new Timer()
+            {
+                Interval = TrackerAutosaveDebounceMs,
+            };
+            TrackerAutosaveTimer.Tick += TrackerAutosaveTimer_Tick;
+
+            OpenTrackerStateDialog = new OpenFileDialog()
+            {
+                Filter = "Tracker state files (*.json)|*.json|All files (*.*)|*.*",
+                Title = "Load Tracker State",
+            };
+
+            FormClosing += MainForm_FormClosing;
         }
 
 
@@ -112,6 +134,7 @@ namespace GSTHD
                 return;
             }
 
+            FlushPendingTrackerSave();
             Controls.Clear();
             ActiveLayout = layout;
             LocalSettings.ActiveLayout = layoutPath;
@@ -135,6 +158,7 @@ namespace GSTHD
                 return;
             }
 
+            FlushPendingTrackerSave();
             Controls.Clear();
             ActiveLayout = layout;
             PostloadLayout();
@@ -224,6 +248,330 @@ namespace GSTHD
 
             Controls.Add(ActiveLayout);
             Controls.Add(MenuBar);
+
+            HookTrackerStateObservers();
+            TryLoadTrackerState(TrackerStateFilePath, showErrors: false, warnOnLayoutMismatch: false);
+        }
+
+        private void HookTrackerStateObservers()
+        {
+            if (ActiveLayout == null)
+                return;
+
+            HookControlTree(ActiveLayout);
+        }
+
+        private void HookControlTree(Control control)
+        {
+            if (control == null)
+                return;
+
+            control.MouseUp -= TrackerStateInteraction;
+            control.MouseUp += TrackerStateInteraction;
+            control.MouseWheel -= TrackerStateInteraction;
+            control.MouseWheel += TrackerStateInteraction;
+            control.DragDrop -= TrackerStateInteraction;
+            control.DragDrop += TrackerStateInteraction;
+            control.TextChanged -= TrackerStateInteraction;
+            control.TextChanged += TrackerStateInteraction;
+
+            control.ControlAdded -= TrackerControlAdded;
+            control.ControlAdded += TrackerControlAdded;
+            control.ControlRemoved -= TrackerControlRemoved;
+            control.ControlRemoved += TrackerControlRemoved;
+
+            foreach (Control child in control.Controls)
+            {
+                HookControlTree(child);
+            }
+        }
+
+        private void TrackerControlAdded(object sender, ControlEventArgs e)
+        {
+            HookControlTree(e.Control);
+            MarkTrackerStateDirty();
+        }
+
+        private void TrackerControlRemoved(object sender, ControlEventArgs e)
+        {
+            MarkTrackerStateDirty();
+        }
+
+        private void TrackerStateInteraction(object sender, EventArgs e)
+        {
+            MarkTrackerStateDirty();
+        }
+
+        private void MarkTrackerStateDirty()
+        {
+            if (IsApplyingTrackerState || ActiveLayout == null)
+                return;
+
+            TrackerStateDirty = true;
+            TrackerAutosaveTimer.Stop();
+            TrackerAutosaveTimer.Start();
+        }
+
+        private void TrackerAutosaveTimer_Tick(object sender, EventArgs e)
+        {
+            TrackerAutosaveTimer.Stop();
+            SaveTrackerState(TrackerStateFilePath, showErrors: false);
+        }
+
+        private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            TrackerAutosaveTimer.Stop();
+            SaveTrackerState(TrackerStateFilePath, showErrors: false);
+        }
+
+        private void FlushPendingTrackerSave()
+        {
+            if (!TrackerStateDirty)
+                return;
+
+            TrackerAutosaveTimer.Stop();
+            SaveTrackerState(TrackerStateFilePath, showErrors: false);
+        }
+
+        private TrackerState BuildTrackerState()
+        {
+            var state = new TrackerState()
+            {
+                Version = TrackerState.CurrentVersion,
+                LayoutPath = ActiveLayout?.FilePath ?? string.Empty,
+                SavedAtUtc = DateTime.UtcNow,
+            };
+
+            if (ActiveLayout == null)
+                return state;
+
+            var siblingCounters = new Dictionary<string, int>();
+            CaptureTrackerState(ActiveLayout, "Layout", siblingCounters, state);
+
+            return state;
+        }
+
+        private void CaptureTrackerState(Control container, string containerKey, Dictionary<string, int> siblingCounters, TrackerState state)
+        {
+            siblingCounters.Clear();
+
+            foreach (Control child in container.Controls)
+            {
+                var controlKey = BuildControlKey(containerKey, child, siblingCounters);
+
+                if (child is Item item)
+                {
+                    state.Items[controlKey] = item.GetState();
+                }
+                else if (child is DoubleItem doubleItem)
+                {
+                    state.DoubleItems[controlKey] = doubleItem.GetState();
+                }
+                else if (child is CollectedItem collectedItem)
+                {
+                    state.CollectedItems[controlKey] = collectedItem.GetState();
+                }
+                else if (child is Medallion medallion)
+                {
+                    state.Medallions[controlKey] = medallion.GetState();
+                    state.MedallionDungeons[controlKey] = medallion.GetDungeonState();
+                }
+                else if (child is Song song)
+                {
+                    state.Songs[controlKey] = song.GetState();
+                }
+                else if (child is SongMarker songMarker)
+                {
+                    state.SongMarkers[controlKey] = songMarker.GetState();
+                }
+                else if (child is GossipStone gossipStone)
+                {
+                    state.GossipStones[controlKey] = gossipStone.GetState();
+                }
+                else if (child is PanelWothBarren panel)
+                {
+                    state.PanelStates[panel.Name] = panel.GetTrackerState();
+                }
+
+                if (child.HasChildren)
+                {
+                    var nestedSiblingCounters = new Dictionary<string, int>();
+                    CaptureTrackerState(child, controlKey, nestedSiblingCounters, state);
+                }
+            }
+        }
+
+        private void ApplyTrackerState(TrackerState state)
+        {
+            if (ActiveLayout == null)
+                return;
+
+            IsApplyingTrackerState = true;
+            try
+            {
+                var controls = BuildControlMap();
+                foreach (var pair in controls)
+                {
+                    var key = pair.Key;
+                    var control = pair.Value;
+
+                    if (control is Item item)
+                    {
+                        if (state.Items.TryGetValue(key, out var saved)) item.SetState(saved);
+                        else item.ResetState();
+                    }
+                    else if (control is DoubleItem doubleItem)
+                    {
+                        if (state.DoubleItems.TryGetValue(key, out var saved)) doubleItem.SetState(saved);
+                        else doubleItem.ResetState();
+                    }
+                    else if (control is CollectedItem collectedItem)
+                    {
+                        if (state.CollectedItems.TryGetValue(key, out var saved)) collectedItem.SetState(saved);
+                        else collectedItem.ResetState();
+                    }
+                    else if (control is Medallion medallion)
+                    {
+                        if (state.Medallions.TryGetValue(key, out var saved)) medallion.SetState(saved);
+                        else medallion.ResetState();
+
+                        if (state.MedallionDungeons.TryGetValue(key, out var dungeonSaved)) medallion.SetDungeonState(dungeonSaved);
+                    }
+                    else if (control is Song song)
+                    {
+                        if (state.Songs.TryGetValue(key, out var saved)) song.SetState(saved);
+                        else song.ResetState();
+                    }
+                    else if (control is SongMarker songMarker)
+                    {
+                        if (state.SongMarkers.TryGetValue(key, out var saved)) songMarker.SetState(saved);
+                        else songMarker.ResetState();
+                    }
+                    else if (control is GossipStone gossipStone)
+                    {
+                        if (state.GossipStones.TryGetValue(key, out var saved)) gossipStone.SetState(saved);
+                        else gossipStone.ResetState();
+                    }
+                    else if (control is PanelWothBarren panel)
+                    {
+                        if (state.PanelStates.TryGetValue(panel.Name, out var panelState)) panel.ApplyTrackerState(panelState);
+                        else panel.ResetTrackerState();
+                    }
+                }
+
+                TrackerStateDirty = false;
+                TrackerAutosaveTimer.Stop();
+            }
+            finally
+            {
+                IsApplyingTrackerState = false;
+            }
+        }
+
+        private Dictionary<string, Control> BuildControlMap()
+        {
+            var result = new Dictionary<string, Control>();
+            if (ActiveLayout == null)
+                return result;
+
+            var siblingCounters = new Dictionary<string, int>();
+            FillControlMap(ActiveLayout, "Layout", siblingCounters, result);
+            return result;
+        }
+
+        private void FillControlMap(Control container, string containerKey, Dictionary<string, int> siblingCounters, Dictionary<string, Control> result)
+        {
+            siblingCounters.Clear();
+
+            foreach (Control child in container.Controls)
+            {
+                var controlKey = BuildControlKey(containerKey, child, siblingCounters);
+                result[controlKey] = child;
+
+                if (child.HasChildren)
+                {
+                    var nestedSiblingCounters = new Dictionary<string, int>();
+                    FillControlMap(child, controlKey, nestedSiblingCounters, result);
+                }
+            }
+        }
+
+        private string BuildControlKey(string containerKey, Control control, Dictionary<string, int> siblingCounters)
+        {
+            var identity = $"{control.GetType().Name}@{control.Left},{control.Top},{control.Width},{control.Height}";
+            siblingCounters.TryGetValue(identity, out var count);
+            var nextCount = count + 1;
+            siblingCounters[identity] = nextCount;
+            return $"{containerKey}/{identity}[{nextCount}]";
+        }
+
+        private bool SaveTrackerState(string filePath, bool showErrors)
+        {
+            if (ActiveLayout == null)
+                return false;
+
+            try
+            {
+                var state = BuildTrackerState();
+                JsonIO.Write(state, filePath);
+                TrackerStateDirty = false;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                if (showErrors)
+                {
+                    MessageBox.Show($"Could not save tracker state. {ex.Message}", $"{Config.ErrorMessageTitlePrefix}: Save Tracker State");
+                }
+                return false;
+            }
+        }
+
+        public bool TryLoadTrackerState(string filePath, bool showErrors = true, bool warnOnLayoutMismatch = true)
+        {
+            if (ActiveLayout == null || !File.Exists(filePath))
+                return false;
+
+            try
+            {
+                var state = JsonIO.Read<TrackerState>(filePath);
+                var mismatch = !string.IsNullOrEmpty(state.LayoutPath)
+                    && !string.Equals(state.LayoutPath, ActiveLayout.FilePath, StringComparison.OrdinalIgnoreCase);
+
+                if (mismatch && warnOnLayoutMismatch)
+                {
+                    var dialogResult = MessageBox.Show(
+                        "This state file was saved from a different layout. Continue and map matching entries only?",
+                        "Layout Mismatch",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning);
+
+                    if (dialogResult != DialogResult.Yes)
+                        return false;
+                }
+
+                ApplyTrackerState(state);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                if (showErrors)
+                {
+                    MessageBox.Show($"Could not load tracker state. {ex.Message}", $"{Config.ErrorMessageTitlePrefix}: Load Tracker State");
+                }
+                return false;
+            }
+        }
+
+        public void LoadTrackerStateFromDialog()
+        {
+            if (OpenTrackerStateDialog.ShowDialog() != DialogResult.OK)
+                return;
+
+            if (TryLoadTrackerState(OpenTrackerStateDialog.FileName, showErrors: true, warnOnLayoutMismatch: true))
+            {
+                SaveTrackerState(TrackerStateFilePath, showErrors: false);
+            }
         }
 
         public void UpdateSettings()
@@ -244,11 +592,12 @@ namespace GSTHD
 
         public void Reset(object sender)
         {
+            FlushPendingTrackerSave();
             ControlExtensions.ClearAndDispose(ActiveLayout);
             ReloadActiveLayout();
             Process.GetCurrentProcess().Refresh();
         }
-        
+
         public void ShowErrorMessage(GSTHDException ex)
         {
             MessageBox.Show(ex.Message, $"{Config.ErrorMessageTitlePrefix}: {ex.Title}");
